@@ -155,7 +155,8 @@ COPY start.5090.sh /start.sh
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
     update-alternatives --set python3 /usr/bin/python3.12
 
-# Install rclone
-RUN curl https://rclone.org/install.sh | bash
+# Install rclone (needs unzip to extract the archive)
+RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/* && \
+    curl https://rclone.org/install.sh | bash
 
 ENTRYPOINT ["/start.sh"]
