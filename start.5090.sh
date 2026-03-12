@@ -7,6 +7,43 @@ FILEBROWSER_CONFIG="/root/.config/filebrowser/config.json"
 DB_FILE="/workspace/runpod-slim/filebrowser.db"
 
 # ---------------------------------------------------------------------------- #
+#                          Shutdown Trap                                          #
+# ---------------------------------------------------------------------------- #
+
+cleanup() {
+    echo "Container stopping — running cleanup..."
+
+    # Kill periodic sync if running
+    [ -n "$SYNC_PID" ] && kill $SYNC_PID 2>/dev/null
+
+    # Sync data back to Azure on shutdown if configured
+    if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
+        echo "Syncing data back to Azure before shutdown..."
+        export RCLONE_CONFIG_AZURE_TYPE=azureblob
+        export RCLONE_CONFIG_AZURE_ACCOUNT=$AZURE_STORAGE_ACCOUNT
+        export RCLONE_CONFIG_AZURE_KEY=$AZURE_STORAGE_KEY
+
+        RCLONE_COMMON_FLAGS="--progress --size-only --multi-thread-streams 16 --transfers 8 --azureblob-upload-concurrency 64"
+
+        echo "Uploading models (checkpoints, vae, loras, etc.)..."
+        rclone sync $COMFYUI_DIR/models azure:models $RCLONE_COMMON_FLAGS
+
+        echo "Uploading input files..."
+        rclone sync $COMFYUI_DIR/input azure:input $RCLONE_COMMON_FLAGS
+
+        echo "Uploading output files..."
+        rclone sync $COMFYUI_DIR/output azure:output $RCLONE_COMMON_FLAGS
+
+        echo "Azure upload complete."
+    fi
+
+    echo "Cleanup finished."
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT
+
+# ---------------------------------------------------------------------------- #
 #                          Function Definitions                                  #
 # ---------------------------------------------------------------------------- #
 
@@ -257,6 +294,66 @@ else
     done
 fi
 
+# ---------------------------------------------------------------------------- #
+#                          Azure Storage Sync (Download)                         #
+# ---------------------------------------------------------------------------- #
+# Expected Azure Blob containers:
+#   models/        -> $COMFYUI_DIR/models/
+#     checkpoints/    - Stable Diffusion checkpoints (.safetensors, .ckpt)
+#     vae/            - VAE models
+#     loras/          - LoRA / LyCORIS models
+#     controlnet/     - ControlNet models
+#     clip/           - CLIP text encoder models
+#     clip_vision/    - CLIP vision models
+#     embeddings/     - Textual Inversion embeddings
+#     upscale_models/ - ESRGAN / upscaler models
+#     hypernetworks/  - Hypernetwork models
+#     unet/           - UNet / diffusion models (Flux, etc.)
+#     style_models/   - Style models (IP-Adapter, etc.)
+#   input/         -> $COMFYUI_DIR/input/
+#   output/        -> $COMFYUI_DIR/output/
+# ---------------------------------------------------------------------------- #
+
+RCLONE_COMMON_FLAGS="--progress --size-only --multi-thread-streams 16 --transfers 8 --azureblob-upload-concurrency 64"
+
+if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
+    echo "Syncing data from Azure..."
+
+    # Configure rclone using Env Vars (no config file needed)
+    export RCLONE_CONFIG_AZURE_TYPE=azureblob
+    export RCLONE_CONFIG_AZURE_ACCOUNT=$AZURE_STORAGE_ACCOUNT
+    export RCLONE_CONFIG_AZURE_KEY=$AZURE_STORAGE_KEY
+
+    # Sync models (checkpoints, vae, loras, controlnet, clip, embeddings, etc.)
+    echo "Downloading models..."
+    rclone sync azure:models $COMFYUI_DIR/models $RCLONE_COMMON_FLAGS
+
+    # Sync input files (reference images, masks, etc.)
+    echo "Downloading input files..."
+    rclone sync azure:input $COMFYUI_DIR/input $RCLONE_COMMON_FLAGS
+
+    # Sync previous outputs
+    echo "Downloading output files..."
+    rclone sync azure:output $COMFYUI_DIR/output $RCLONE_COMMON_FLAGS
+
+    echo "Azure download complete."
+
+    # Start periodic background sync for input and output (every 5 minutes)
+    SYNC_INTERVAL=${AZURE_SYNC_INTERVAL:-300}
+    (
+        while true; do
+            sleep $SYNC_INTERVAL
+            echo "[periodic-sync] Uploading input files..."
+            rclone sync $COMFYUI_DIR/input azure:input $RCLONE_COMMON_FLAGS 2>&1 | sed 's/^/[periodic-sync] /'
+            echo "[periodic-sync] Uploading output files..."
+            rclone sync $COMFYUI_DIR/output azure:output $RCLONE_COMMON_FLAGS 2>&1 | sed 's/^/[periodic-sync] /'
+            echo "[periodic-sync] Sync complete at $(date)"
+        done
+    ) &
+    SYNC_PID=$!
+    echo "Periodic Azure sync started (PID $SYNC_PID, every ${SYNC_INTERVAL}s)"
+fi
+
 # Start ComfyUI with custom arguments if provided
 cd $COMFYUI_DIR
 FIXED_ARGS="--listen 0.0.0.0 --port 8188"
@@ -276,5 +373,6 @@ else
     nohup python main.py $FIXED_ARGS &> /workspace/runpod-slim/comfyui.log &
 fi
 
-# Tail the log file
-tail -f /workspace/runpod-slim/comfyui.log
+# Tail the log file in the background so the trap can fire on SIGTERM
+tail -f /workspace/runpod-slim/comfyui.log &
+wait $!

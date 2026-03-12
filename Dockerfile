@@ -155,4 +155,7 @@ COPY start.sh /start.sh
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
     update-alternatives --set python3 /usr/bin/python3.12
 
+# Install rclone
+RUN curl https://rclone.org/install.sh | bash
+
 ENTRYPOINT ["/start.sh"]
