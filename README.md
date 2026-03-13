@@ -60,15 +60,13 @@ Set these when deploying a pod under **Environment Variables**:
 |---|---|---|
 | `AZURE_STORAGE_ACCOUNT` | **Yes** | Storage account name |
 | `AZURE_STORAGE_KEY` | **Yes** | Storage access key |
-| `AZURE_SYNC_INTERVAL` | No | Sync interval in seconds (default: `300`) |
 
 ### How Sync Works
 
 - **Startup:** Downloads models, inputs, and outputs from Azure
-- **Every 5 min:** Syncs input and output back to Azure
 - **Shutdown:** Syncs everything back (requires graceful stop)
 
-> Force-kills skip the shutdown sync. Periodic sync limits data loss to ~5 minutes.
+> Force-kills skip the shutdown sync — always use graceful stop to avoid data loss.
 
 ### Uploading Models
 

@@ -13,9 +13,6 @@ DB_FILE="/workspace/runpod-slim/filebrowser.db"
 cleanup() {
     echo "Container stopping — running cleanup..."
 
-    # Kill periodic sync if running
-    [ -n "$SYNC_PID" ] && kill $SYNC_PID 2>/dev/null
-
     # Sync data back to Azure on shutdown if configured
     if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
         echo "Syncing data back to Azure before shutdown..."
@@ -314,10 +311,10 @@ fi
 #   output/        -> $COMFYUI_DIR/output/
 # ---------------------------------------------------------------------------- #
 
-RCLONE_COMMON_FLAGS="--progress --size-only --multi-thread-streams 16 --transfers 8 --azureblob-upload-concurrency 64"
-
 if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
     echo "Syncing data from Azure..."
+
+    RCLONE_COMMON_FLAGS="--progress --size-only --multi-thread-streams 16 --transfers 8 --azureblob-upload-concurrency 64"
 
     # Configure rclone using Env Vars (no config file needed)
     export RCLONE_CONFIG_AZURE_TYPE=azureblob
@@ -337,21 +334,6 @@ if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
     rclone sync azure:output $COMFYUI_DIR/output $RCLONE_COMMON_FLAGS
 
     echo "Azure download complete."
-
-    # Start periodic background sync for input and output (every 5 minutes)
-    SYNC_INTERVAL=${AZURE_SYNC_INTERVAL:-300}
-    (
-        while true; do
-            sleep $SYNC_INTERVAL
-            echo "[periodic-sync] Uploading input files..."
-            rclone sync $COMFYUI_DIR/input azure:input $RCLONE_COMMON_FLAGS 2>&1 | sed 's/^/[periodic-sync] /'
-            echo "[periodic-sync] Uploading output files..."
-            rclone sync $COMFYUI_DIR/output azure:output $RCLONE_COMMON_FLAGS 2>&1 | sed 's/^/[periodic-sync] /'
-            echo "[periodic-sync] Sync complete at $(date)"
-        done
-    ) &
-    SYNC_PID=$!
-    echo "Periodic Azure sync started (PID $SYNC_PID, every ${SYNC_INTERVAL}s)"
 fi
 
 # Start ComfyUI with custom arguments if provided
