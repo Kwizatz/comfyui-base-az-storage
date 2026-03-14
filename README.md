@@ -48,7 +48,7 @@ Azure Blob Storage is **provider-independent** (accessible from anywhere), has *
 
 1. **Create a Storage Account:** [Azure Portal](https://portal.azure.com) → Search "Storage accounts" → Create. Use Standard performance, LRS redundancy, region close to RunPod.
 
-2. **Create Containers:** In the storage account → Data storage → Containers, create three **Private** containers: `models`, `input`, `output`.
+2. **Create Containers:** In the storage account → Data storage → Containers, create four **Private** containers: `models`, `input`, `output`, `workflows`.
 
 3. **Get Access Key:** Security + networking → Access keys → Show Key 1. Copy the account name and key.
 
@@ -63,7 +63,7 @@ Set these when deploying a pod under **Environment Variables**:
 
 ### How Sync Works
 
-- **Startup:** Downloads models, inputs, and outputs from Azure
+- **Startup:** Downloads models, inputs, outputs, and workflows from Azure
 - **Shutdown:** Syncs everything back (requires graceful stop)
 
 > Force-kills skip the shutdown sync — always use graceful stop to avoid data loss.

@@ -31,6 +31,9 @@ cleanup() {
         echo "Uploading output files..."
         rclone sync $COMFYUI_DIR/output azure:output $RCLONE_COMMON_FLAGS
 
+        echo "Uploading workflows..."
+        rclone sync $COMFYUI_DIR/user/default/workflows azure:workflows $RCLONE_COMMON_FLAGS
+
         echo "Azure upload complete."
     fi
 
@@ -309,6 +312,7 @@ fi
 #     style_models/   - Style models (IP-Adapter, etc.)
 #   input/         -> $COMFYUI_DIR/input/
 #   output/        -> $COMFYUI_DIR/output/
+#   workflows/     -> $COMFYUI_DIR/user/default/workflows/
 # ---------------------------------------------------------------------------- #
 
 if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
@@ -332,6 +336,11 @@ if [ -n "$AZURE_STORAGE_ACCOUNT" ]; then
     # Sync previous outputs
     echo "Downloading output files..."
     rclone sync azure:output $COMFYUI_DIR/output $RCLONE_COMMON_FLAGS
+
+    # Sync workflows
+    echo "Downloading workflows..."
+    mkdir -p $COMFYUI_DIR/user/default/workflows
+    rclone sync azure:workflows $COMFYUI_DIR/user/default/workflows $RCLONE_COMMON_FLAGS
 
     echo "Azure download complete."
 fi
